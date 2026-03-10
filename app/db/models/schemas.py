@@ -3,7 +3,19 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+    
+class ReportRequest(BaseModel):
+    month: int
+    year: int    
+    
+class ReportResponse(BaseModel):
+    id: int
+    report_date: datetime = Field(default_factory=datetime.utcnow)
+    analyzed_period: str
+    description: str
 
+class Config:
+    from_attributes = True
 
 class ChatMessage(BaseModel):
     """Chat message model."""
@@ -27,8 +39,9 @@ class ChatResponse(BaseModel):
     created: int = Field(..., description="Creation timestamp")
     model: str = Field(..., description="Model used")
     choices: List[Dict[str, Any]] = Field(..., description="Response choices")
-    usage: Optional[Dict[str, int]] = Field(default=None, description="Token usage information")
-
+    # usage: Optional[Dict[str, int]] = Field(default=None, description="Token usage information")
+    usage: dict | None = None
+    
 
 class ModelInfo(BaseModel):
     """AI model information."""

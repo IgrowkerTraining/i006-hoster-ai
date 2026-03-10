@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 
-from app.models.schemas import ChatRequest, ChatResponse, ModelInfo
+from app.db.models.schemas import ChatRequest, ChatResponse, ModelInfo
 from app.services.ai_service import AIService
 from app.api.dependencies import get_ai_service
 from app.core.logging import get_logger

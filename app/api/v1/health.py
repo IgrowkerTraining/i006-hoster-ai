@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 from datetime import datetime
 
-from app.models.schemas import HealthResponse
+from app.db.models.schemas import HealthResponse
 from app.config.settings import settings
 from app.core.logging import get_logger
 

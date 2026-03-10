@@ -10,10 +10,14 @@ class Settings(BaseSettings):
     app_name: str = "FastAPI AI Template"
     app_version: str = "1.0.0"
     debug: bool = True
-    
-    # OpenRouter Configuration
-    openrouter_api_key: str
+
+    openrouter_api_key: str 
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    llm_model: str = "google/gemma3:4b"
+    gemma_url: str = "http://localhost:11434/api/"  # Ollama
+
+    AI_DATABASE_URL: str = "postgresql+asyncpg://postgres:m4rt1np0stgr3s@localhost:5432/hoster_AI"
+    MAIN_DATABASE_URL: str = "postgresql+asyncpg://postgres:m4rt1np0stgr3s@localhost:5432/hoster"
     
     # API Configuration
     api_host: str = "0.0.0.0"

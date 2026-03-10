@@ -8,24 +8,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import settings
 from app.core.logging import setup_logging, get_logger
 from app.api.v1 import api_router
-from app.models.schemas import RootResponse
+from app.db.models.schemas import RootResponse
 from app.services.ai_service import ai_service
 
-# Setup logging
+from app.db.base import Base
+from app.db.database_ai import ai_engine
+from app.db.models.report_model import Report
+
+AIBase = Base
+
+# Setup logging    
 setup_logging()
 logger = get_logger(__name__)
-
+print(settings.openrouter_api_key)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
+    
+    async with ai_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
     yield
     # Shutdown
     await ai_service.close()
     logger.info("Application shutdown complete")
-
 
 # Create FastAPI application
 app = FastAPI(
@@ -38,6 +47,18 @@ app = FastAPI(
     openapi_url="/openapi.json"
 )
 
+# @app.on_event("startup")
+# async def create_tables():
+#     print(Base.metadata.tables.keys())
+#     async with ai_engine.begin() as conn:
+#         await conn.run_sync(Base.metadata.create_all)
+        
+        # await conn.run_sync(report_model.Report.create.all)
+# async def create_tables():
+#     async with ai_engine.begin() as conn:
+#         await conn.run_sync(base.metadata.create_all)
+#         await conn.run_sync(report_model.Report.create.all)
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -49,7 +70,8 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(api_router)
-
+for route in app.routes:
+    print(route.path)
 
 @app.get("/", response_model=RootResponse)
 async def read_root():

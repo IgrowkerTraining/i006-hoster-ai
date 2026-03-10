@@ -1,12 +1,16 @@
 """AI service for OpenRouter integration."""
 
+from urllib import response
+
 import httpx
 import uuid
-from datetime import datetime
+
+from datetime import date, datetime
 from typing import List, Dict, Any, Optional
+from sqlalchemy import text
 
 from app.config.settings import settings
-from app.models.schemas import ChatRequest, ChatResponse, ModelInfo
+from app.db.models.schemas import ChatRequest, ChatResponse, ModelInfo
 from app.core.logging import get_logger
 from app.core.security import mask_api_key
 
@@ -18,64 +22,97 @@ class AIService:
     
     def __init__(self):
         """Initialize the AI service."""
-        self.client = httpx.AsyncClient(
+
+        # Cliente para OpenRouter
+        self.openrouter_client = httpx.AsyncClient(
             base_url=settings.openrouter_base_url,
             headers={
                 "Authorization": f"Bearer {settings.openrouter_api_key}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://github.com/your-username/template-python-fastapi",
+                # "HTTP-Referer": "https://github.com/your-username/template-python-fastapi",
                 "X-Title": settings.app_name,
             },
-            timeout=60.0
+            timeout=30.0,
         )
-        logger.info(f"AI Service initialized with API key: {mask_api_key(settings.openrouter_api_key)}")
+
+        # Cliente para Gemma (Ollama local)
+        self.gemma_client = httpx.AsyncClient(
+            base_url=settings.gemma_url,    
+            headers={
+                "Content-Type": "application/json",
+            },
+            timeout=30.0,
+        )
+
+        logger.info(
+            f"AI Service initialized with API key: {mask_api_key(settings.openrouter_api_key)}"
+        )
+        
     
     async def chat_completion(self, request: ChatRequest) -> ChatResponse:
-        """Create a chat completion using OpenRouter API."""
-        
-        # Convert ChatMessage objects to dict format
-        messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
-        
-        payload = {
-            "model": request.model,
-            "messages": messages,
-            "max_tokens": request.max_tokens,
-            "temperature": request.temperature,
-            "stream": request.stream,
-        }
-        
+        print("Request received in AIService:", request)
         try:
-            logger.info(f"Sending chat completion request for model: {request.model}")
-            response = await self.client.post("/chat/completions", json=payload)
-            response.raise_for_status()
-            
-            data = response.json()
-            
-            chat_response = ChatResponse(
-                id=data.get("id", str(uuid.uuid4())),
-                created=data.get("created", int(datetime.now().timestamp())),
-                model=data.get("model", request.model),
-                choices=data.get("choices", []),
-                usage=data.get("usage")
-            )
-            
-            logger.info(f"Chat completion successful: {chat_response.id}")
-            return chat_response
-            
-        except httpx.HTTPStatusError as e:
-            error_msg = f"OpenRouter API error: {e.response.status_code} - {e.response.text}"
-            logger.error(error_msg)
-            raise Exception(error_msg)
+            return await self._openrouter_completion(request)
+
         except Exception as e:
-            error_msg = f"Error calling OpenRouter API: {str(e)}"
-            logger.error(error_msg)
-            raise Exception(error_msg)
+            logger.warning("OpenRouter failed, switching to Gemma")
+            return await self._gemma_completion(request)
+        
+        
     
+
+    async def _openrouter_completion(self, request):
+
+        response = await self.openrouter_client.post(
+            "/chat/completions",
+            json=request
+        )
+
+        data = response.json()
+
+        if "choices" not in data:
+            print("OpenRouter error:", data)
+            raise Exception("OpenRouter response error")
+
+        return data["choices"][0]["message"]["content"]
+    
+    async def _gemma_completion(self, request: ChatRequest):
+
+        prompt = request.messages[-1].content
+
+        response = await self.gemma_client.post(
+            "/generate",
+            json={
+                "model": "gemma3:4b",
+                "prompt": prompt,
+                "stream": False
+            }
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        return ChatResponse(
+            id=str(uuid.uuid4()),
+            created=int(datetime.now().timestamp()),
+            model="gemma3:4b",
+            choices=[
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": data.get("response", "")
+                    }
+                }
+            ],
+            usage=None
+    )
+        
     async def list_models(self) -> List[ModelInfo]:
         """List available models from OpenRouter."""
         try:
             logger.info("Fetching available models from OpenRouter")
-            response = await self.client.get("/models")
+            response = await self.openrouter_client.get("/models")
             response.raise_for_status()
             
             data = response.json()
@@ -115,9 +152,20 @@ class AIService:
     
     async def close(self):
         """Close the HTTP client."""
-        await self.client.aclose()
+        await self.openrouter_client.aclose()
+        await self.gemma_client.aclose()
         logger.info("AI service client closed")
 
+    async def simple_prompt(self, prompt: str):
+
+        request = {
+            "model": "openai/gpt-4o-mini",
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        }
+
+        return await self._openrouter_completion(request)
 
 # Global AI service instance
 ai_service = AIService()
